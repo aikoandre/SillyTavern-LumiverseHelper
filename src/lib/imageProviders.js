@@ -13,6 +13,30 @@ import { decryptValue } from "./cryptoUtils.js";
 import { loadProfileSync } from "./connectionService.js";
 
 // Provider configuration constants
+/**
+ * Fetch wrapper that routes external URLs through SillyTavern's CORS proxy.
+ * Falls back to direct fetch if proxy is unavailable.
+ */
+async function proxyFetch(url, options = {}) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return fetch(url, options);
+    }
+    try {
+        const proxyUrl = '/proxy/' + url;
+        const response = await fetch(proxyUrl, options);
+        if (response.status === 404) {
+            const text = await response.clone().text();
+            if (text.includes('CORS proxy is disabled')) {
+                console.warn('[proxyFetch] CORS proxy disabled, falling back to direct fetch');
+                return fetch(url, options);
+            }
+        }
+        return response;
+    } catch (proxyError) {
+        console.warn('[proxyFetch] Proxy failed, falling back to direct:', proxyError.message);
+        return fetch(url, options);
+    }
+}
 export const IMAGEGEN_PROVIDERS = {
   google_gemini: {
     name: "Google Gemini",
@@ -191,7 +215,7 @@ export async function generateImageGemini(prompt, config, settings, referenceIma
   }
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await proxyFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -291,7 +315,7 @@ export async function generateImageNanoGpt(prompt, config, settings, referenceIm
   }
 
   try {
-    const response = await fetch("https://nano-gpt.com/v1/images/generations", {
+    const response = await proxyFetch("https://nano-gpt.com/v1/images/generations", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -596,7 +620,7 @@ export async function generateImageNovelAI(prompt, config, settings, signal) {
   });
 
   try {
-    const response = await fetch("https://image.novelai.net/ai/generate-image-stream", {
+    const response = await proxyFetch("https://image.novelai.net/ai/generate-image-stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -759,7 +783,7 @@ export async function fetchNanoGptModels(apiKey) {
   }
 
   try {
-    const response = await fetch("https://nano-gpt.com/api/v1/image-models", {
+    const response = await proxyFetch("https://nano-gpt.com/api/v1/image-models", {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${apiKey}`,

@@ -22,6 +22,31 @@ import {
   clearSummaryLoading,
 } from "./chatSheldService.js";
 
+/**
+ * Fetch wrapper that routes external URLs through SillyTavern's CORS proxy.
+ * Falls back to direct fetch if proxy is unavailable.
+ */
+async function proxyFetch(url, options = {}) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return fetch(url, options);
+    }
+    try {
+        const proxyUrl = '/proxy/' + url;
+        const response = await fetch(proxyUrl, options);
+        if (response.status === 404) {
+            const text = await response.clone().text();
+            if (text.includes('CORS proxy is disabled')) {
+                console.warn('[proxyFetch] CORS proxy disabled, falling back to direct fetch');
+                return fetch(url, options);
+            }
+        }
+        return response;
+    } catch (proxyError) {
+        console.warn('[proxyFetch] Proxy failed, falling back to direct:', proxyError.message);
+        return fetch(url, options);
+    }
+}
+
 // Metadata key for tracking last summarized message count
 export const LOOM_LAST_SUMMARIZED_KEY = "loom_last_summarized_at";
 
@@ -614,7 +639,7 @@ export async function generateSummaryWithSecondaryLLM(
       headers["anthropic-beta"] = "prompt-caching-2024-07-31";
     }
 
-    response = await fetch(endpoint, {
+    response = await proxyFetch(endpoint, {
       method: "POST",
       headers: headers,
       body: JSON.stringify(requestBody),
@@ -666,7 +691,7 @@ export async function generateSummaryWithSecondaryLLM(
       requestBody.generationConfig.topP = topP;
     }
 
-    response = await fetch(googleEndpoint, {
+    response = await proxyFetch(googleEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -716,7 +741,7 @@ export async function generateSummaryWithSecondaryLLM(
       requestBody.top_p = topP;
     }
 
-    response = await fetch(endpoint, {
+    response = await proxyFetch(endpoint, {
       method: "POST",
       headers: headers,
       body: JSON.stringify(requestBody),

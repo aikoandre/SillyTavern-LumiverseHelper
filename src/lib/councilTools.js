@@ -47,6 +47,37 @@ let namedToolResultsRaw = {};
 const requestTimestamps = [];
 
 /**
+ * Fetch wrapper that routes external URLs through SillyTavern's CORS proxy.
+ * Falls back to direct fetch if proxy is unavailable.
+ */
+async function proxyFetch(url, options = {}) {
+    // Only proxy absolute external URLs
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return fetch(url, options);
+    }
+
+    try {
+        const proxyUrl = '/proxy/' + url;
+        const response = await fetch(proxyUrl, options);
+
+        // Check if proxy is disabled (ST returns 404 with specific message)
+        if (response.status === 404) {
+            const text = await response.clone().text();
+            if (text.includes('CORS proxy is disabled')) {
+                console.warn('[proxyFetch] CORS proxy disabled, falling back to direct fetch');
+                return fetch(url, options);
+            }
+        }
+
+        return response;
+    } catch (proxyError) {
+        // Proxy route unreachable, fall back to direct
+        console.warn('[proxyFetch] Proxy failed, falling back to direct:', proxyError.message);
+        return fetch(url, options);
+    }
+}
+
+/**
  * RPM rate gate — waits if issuing another request would exceed the configured
  * requests-per-minute limit. Uses a sliding 60-second window.
  * @param {AbortSignal} [signal] - Optional abort signal to cancel the wait
@@ -1736,7 +1767,7 @@ Review the story context above. For each tool call, provide specific, actionable
   };
   if (signal) fetchOptions.signal = signal;
 
-  const response = await fetch(endpoint, fetchOptions);
+  const response = await proxyFetch(endpoint, fetchOptions);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unable to read error");
@@ -1830,7 +1861,7 @@ Review the story context above. For each tool call, provide specific, actionable
         const retryOptions = { method: "POST", headers, body: JSON.stringify(retryBody) };
         if (signal) retryOptions.signal = signal;
 
-        const retryResponse = await fetch(endpoint, retryOptions);
+        const retryResponse = await proxyFetch(endpoint, retryOptions);
         if (!retryResponse.ok) break;
 
         const retryData = await retryResponse.json();
@@ -1948,7 +1979,7 @@ Review the story context above. For each tool call, provide specific, actionable
   };
   if (signal) fetchOptions.signal = signal;
 
-  const response = await fetch(endpoint, fetchOptions);
+  const response = await proxyFetch(endpoint, fetchOptions);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unable to read error");
@@ -2056,7 +2087,7 @@ Review the story context above. For each tool call, provide specific, actionable
         const retryOptions = { method: "POST", headers, body: JSON.stringify(retryBody) };
         if (signal) retryOptions.signal = signal;
 
-        const retryResponse = await fetch(endpoint, retryOptions);
+        const retryResponse = await proxyFetch(endpoint, retryOptions);
         if (!retryResponse.ok) break;
 
         const retryData = await retryResponse.json();
@@ -2201,7 +2232,7 @@ Provide your contributions from your unique perspective as ${memberName}, filter
   };
   if (signal) fetchOptions.signal = signal;
 
-  const response = await fetch(googleEndpoint, fetchOptions);
+  const response = await proxyFetch(googleEndpoint, fetchOptions);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unable to read error");
