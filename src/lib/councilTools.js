@@ -55,10 +55,23 @@ async function proxyFetch(url, options = {}) {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
         return fetch(url, options);
     }
+    
+    const proxyOptions = { ...options };
+    if (proxyOptions.headers) {
+        proxyOptions.headers = { ...proxyOptions.headers };
+        if (proxyOptions.headers['Authorization']) {
+            proxyOptions.headers['X-Proxy-Authorization'] = proxyOptions.headers['Authorization'];
+            delete proxyOptions.headers['Authorization'];
+        }
+        if (proxyOptions.headers['authorization']) {
+            proxyOptions.headers['x-proxy-authorization'] = proxyOptions.headers['authorization'];
+            delete proxyOptions.headers['authorization'];
+        }
+    }
 
     try {
         const proxyUrl = '/proxy/' + url;
-        const response = await fetch(proxyUrl, options);
+        const response = await fetch(proxyUrl, proxyOptions);
 
         // Check if proxy is disabled (ST returns 404 with specific message)
         if (response.status === 404) {
